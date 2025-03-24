@@ -32,7 +32,7 @@ http://localhost:9000/static/
 - 配置热词,可增加语音识别专有名词的准确性,本项目的`test`目录，也有写相关代码,可直接运行，但是要配置API-KEY参考网址：https://help.aliyun.com/zh/model-studio/developer-reference/custom-hot-words
 - 在`cache`目录,可以编辑`prompt.txt`写提示词
 - 可编辑快捷键在`scripts.js`文件可修改
-- 可将聊天记录保存为txt文件
+- 可将聊天记录保存为md文件
 
 # 参考项目（Reference item）
 [在网页中录音并进行语音识别](https://github.com/aliyun/alibabacloud-bailian-speech-demo/tree/master/samples/gallery/input-text-out-audio-html-ai-assistant)
