@@ -5,9 +5,9 @@ import dashscope
 import websockets
 from dashscope.audio.asr import *
 
-import config
+from asrchat_config import config
 
-dashscope.api_key = config.DASHSCOPE_API_KEY  # set API-key manually
+dashscope.api_key = config["DASHSCOPE_API_KEY"]
 
 service = VocabularyService()
 list_voca_length = len(service.list_vocabularies())

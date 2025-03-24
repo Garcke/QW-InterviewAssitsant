@@ -6,10 +6,10 @@ from fastapi.responses import StreamingResponse
 from openai import OpenAI
 from pydantic import BaseModel
 
-import config
+from asrchat_config import config
 
-# 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx",
-API_KEY = config.DASHSCOPE_API_KEY
+# 使用 API Key
+API_KEY = config["DASHSCOPE_API_KEY"]
 
 app = FastAPI()
 

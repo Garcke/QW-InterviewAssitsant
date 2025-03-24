@@ -1,8 +1,6 @@
 import dashscope
 from dashscope.audio.asr import *
 
-import config
-
 """
 def create_vocabulary(self, target_model: str, prefix: str, vocabulary: List[dict]) -> str:
     '''
