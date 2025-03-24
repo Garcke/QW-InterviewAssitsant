@@ -272,3 +272,20 @@ button:not(:disabled):hover {
         transform: translateX(6px);
     }
 }
+
+
+/* 新增 MathJax 公式样式 */
+.MathJax_Display {
+    overflow-x: auto;
+    padding: 1rem 0;
+}
+
+mjx-container {
+    display: inline-block !important;
+    margin: 0.3em 0 !important;
+}
+
+/* 公式在暗色主题下的显示优化 */
+mjx-container > svg {
+    filter: invert(1); /* 反转颜色适配暗色背景 */
+}

@@ -3,13 +3,22 @@ import PCMAudioRecorder from './audio_recorder.js';
 // ================== FastAPI参数配置 ==================
 const API_BASE_URL = "http://localhost:2333"; // FastAPI 地址
 let SYSTEM_PROMPT = ""; // 提示词初始化为空，后续从文件中读取
+const RECOGNITION_MESSAGE_CLASS = 'recognition-message';
 
-// ================== 全局常量 ==================
+// ================== 快捷键配置 ==================
+const SHORTCUT_KEYS = {
+    'KeyC': 'clearButton',   // C键清除文本
+    'KeyF': 'outputButton'   // F键输出文本
+};
+const activate_audio = 'KeyA'
+
+// ================== DOM元素 ==================
 const startButton = document.getElementById('startButton');
 const stopButton = document.getElementById('stopButton');
 const chat = document.getElementById('chat');
 const outputDiv = document.getElementById('outputText');
-const RECOGNITION_MESSAGE_CLASS = 'recognition-message';
+const textInput = document.getElementById('inputBox');
+document.getElementById('saveTXTButton').addEventListener('click', saveHistoryAsTXT);
 
 // ================== 全局变量 ==================
 let activeResponseMessage = addMessage('>', 'response-message');
@@ -18,14 +27,15 @@ let ws = null;
 let completeTexts = []; // 存储所有完整识别结果
 let aiConversationHistory = []; // 存储AI对话历史
 let isUserScrolling = false; // 用户是否正在手动滚动
+let isSending = false; // 防止重复提交
 
-
-// ================== 快捷键配置 ==================
-const SHORTCUT_KEYS = {
-    'KeyC': 'clearButton',   // C键清除文本
-    'KeyF': 'outputButton'   // F键输出文本
-};
-const activate_audio = 'KeyA'
+// ================== 滚动行为优化 ==================
+outputDiv.addEventListener('scroll', () => {
+    const threshold = 100; // 距离底部 100px 视为"接近底部"
+    const isNearBottom =
+        outputDiv.scrollHeight - outputDiv.scrollTop - outputDiv.clientHeight <= threshold;
+    isUserScrolling = !isNearBottom;
+});
 
 // 全局快捷键监听
 document.addEventListener('keydown', (e) => {
@@ -52,54 +62,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// ================== 从文件中读取提示词 ==================
-async function loadPromptFromFile() {
-    try {
-        const response = await fetch('../cache/prompt.txt'); // 读取 prompt.txt 文件
-        if (!response.ok) {
-            throw new Error('提示词文件加载失败');
-        }
-        SYSTEM_PROMPT = await response.text(); // 将文件内容赋值给 SYSTEM_PROMPT
-        console.log('提示词已从文件加载:', SYSTEM_PROMPT);
-    } catch (error) {
-        console.error('加载提示词文件时出错:', error);
-        SYSTEM_PROMPT = "默认提示词：请回答我的问题。"; // 如果文件加载失败，使用默认提示词
-    }
-}
-
-// ================== 初始化时设置提示词 ==================
-(async function initPrompt() {
-    await loadPromptFromFile(); // 从文件中加载提示词
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/set_prompt/`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                prompt: SYSTEM_PROMPT,
-            }),
-        });
-        if (!response.ok) throw new Error("提示词设置失败");
-        console.log("系统提示词设置成功");
-    } catch (error) {
-        console.error("提示词设置错误:", error);
-    }
-})();
-
-// ================== 滚动行为优化 ==================
-outputDiv.addEventListener('scroll', () => {
-    const threshold = 100; // 距离底部 100px 视为"接近底部"
-    const isNearBottom =
-        outputDiv.scrollHeight - outputDiv.scrollTop - outputDiv.clientHeight <= threshold;
-    isUserScrolling = !isNearBottom;
-});
-
 // ================== 文本输入处理 ==================
-const textInput = document.getElementById('inputBox');
-let isSending = false; // 防止重复提交
-
 textInput.addEventListener('keydown', async (e) => {
     // Shift + Enter 换行
     if (e.shiftKey && e.key === 'Enter') {
@@ -125,61 +88,7 @@ textInput.addEventListener('keydown', async (e) => {
     }
 });
 
-async function processTextInput(text) {
-    // 显示用户消息
-    addAIMessage(text, 'user-message');
-
-    try {
-        // 调用API
-        const response = await fetch(`${API_BASE_URL}/chat/`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({content: text}),
-        });
-
-        if (!response.ok) throw new Error(`HTTP错误: ${response.status}`);
-
-        // 处理流式响应
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let assistantMessage = '';
-        let activeAIMessage = createAIMessageElement();
-
-        while (true) {
-            const {done, value} = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            try {
-                const jsonResponse = JSON.parse(chunk);
-                assistantMessage += jsonResponse.response;
-                updateMessageWithMarkdown(activeAIMessage, assistantMessage);
-
-                // 自动滚动
-                if (!isUserScrolling) {
-                    outputDiv.scrollTop = outputDiv.scrollHeight;
-                }
-            } catch (error) {
-                console.error('解析错误:', error);
-            }
-        }
-
-        // 保存对话历史
-        aiConversationHistory.push({
-            user: text,
-            assistant: assistantMessage,
-        });
-    } catch (error) {
-        console.error('API请求失败:', error);
-        addAIMessage('服务连接失败，请检查网络', 'error-message');
-        throw error;
-    }
-}
-
-
-// ================== 修改后的输出按钮功能 ==================
+// ================== 输出按钮功能 ==================
 document.getElementById('outputButton').addEventListener('click', async () => {
     try {
         // 1. 显示用户消息
@@ -237,7 +146,7 @@ document.getElementById('outputButton').addEventListener('click', async () => {
     }
 });
 
-// ================== 新增清除功能 ==================
+// ================== 清除功能 ==================
 document.getElementById('clearButton').addEventListener('click', () => {
     // 1. 清空存储的识别结果
     completeTexts = [];
@@ -252,7 +161,144 @@ document.getElementById('clearButton').addEventListener('click', () => {
     console.log('所有识别文本已清除');
 });
 
-// ================== 新增聊天消息处理函数 ==================
+// 从文件中读取提示词
+async function loadPromptFromFile() {
+    try {
+        const response = await fetch('../cache/prompt.txt'); // 读取 prompt.txt 文件
+        if (!response.ok) {
+            throw new Error('提示词文件加载失败');
+        }
+        SYSTEM_PROMPT = await response.text(); // 将文件内容赋值给 SYSTEM_PROMPT
+        console.log('提示词已从文件加载:', SYSTEM_PROMPT);
+    } catch (error) {
+        console.error('加载提示词文件时出错:', error);
+        SYSTEM_PROMPT = "默认提示词：请回答我的问题。"; // 如果文件加载失败，使用默认提示词
+    }
+}
+
+// 初始化时设置提示词
+(async function initPrompt() {
+    await loadPromptFromFile(); // 从文件中加载提示词
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/set_prompt/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                prompt: SYSTEM_PROMPT,
+            }),
+        });
+        if (!response.ok) throw new Error("提示词设置失败");
+        console.log("系统提示词设置成功");
+    } catch (error) {
+        console.error("提示词设置错误:", error);
+    }
+})();
+
+// 保存为TXT文件的功能
+async function saveHistoryAsTXT() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/history/`);
+        if (!response.ok) throw new Error('获取历史失败: ' + response.status);
+
+        const data = await response.json();
+        const history = data.history;
+
+        // 转换为易读的TXT格式
+        let txtContent = `<center>=== AI 聊天记录 ===</center>\n\n`;
+        let messageCount = 0;
+
+        history.forEach((entry, index) => {
+            if (entry.role === 'system') return; // 跳过系统提示词
+
+            const prefix = entry.role === 'user' ? '[用户] ' : '[AI] ';
+            txtContent += `${prefix}${entry.content}\n\n`;
+            messageCount++;
+        });
+
+        if (messageCount === 0) {
+            addAIMessage('当前没有可保存的聊天记录', 'info-message');
+            return;
+        }
+
+        // 创建Blob并下载
+        const blob = new Blob([txtContent], {type: 'text/plain'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `聊天历史{${new Date().toISOString().slice(0, 10)}}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        addAIMessage(`已保存 ${messageCount} 条记录到本地文件`, 'info-message');
+    } catch (error) {
+        console.error('保存失败:', error);
+        addAIMessage(`保存失败: ${error.message}`, 'error-message');
+    }
+}
+
+// 输入文本处理函数
+async function processTextInput(text) {
+    // 显示用户消息
+    addAIMessage(text, 'user-message');
+
+    try {
+        // 调用API
+        const response = await fetch(`${API_BASE_URL}/chat/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({content: text}),
+        });
+
+        if (!response.ok) throw new Error(`HTTP错误: ${response.status}`);
+
+        // 处理流式响应
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let assistantMessage = '';
+        let activeAIMessage = createAIMessageElement();
+
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            try {
+                const jsonResponse = JSON.parse(chunk);
+                assistantMessage += jsonResponse.response;
+                updateMessageWithMarkdown(activeAIMessage, assistantMessage);
+
+                // 自动滚动
+                if (!isUserScrolling) {
+                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                }
+            } catch (error) {
+                console.error('解析错误:', error);
+            }
+        }
+
+        // 保存对话历史
+        aiConversationHistory.push({
+            user: text,
+            assistant: assistantMessage,
+        });
+    } catch (error) {
+        console.error('API请求失败:', error);
+        addAIMessage('服务连接失败，请检查网络', 'error-message');
+        throw error;
+    }
+}
+
+
+
+
+// 聊天消息处理函数
 function createAIMessageElement() {
     const message = document.createElement('div');
     message.className = 'message ai-response-message';
