@@ -11,7 +11,7 @@ pip install -r requirements.txt
   
 - 要同时运行三个服务
 ```
-uvicorn test-api-qw:app --reload --port 2333
+uvicorn test-api-qwen:app --reload --port 2333
 ```
 ```
 python .\server.py 
